@@ -1,0 +1,235 @@
+{
+    "swagger": "2.0",
+    "info": {
+      "version": "1.0.0",
+      "title": "MERN Knowledge Base and Ticketing System API",
+      "description": "API documentation for the MERN Knowledge Base, Ticketing System, and related features."
+    },
+    "host": "localhost:5000",
+    "basePath": "/api",
+    "schemes": ["http"],
+    "paths": {
+      "/auth/register": {
+        "post": {
+          "summary": "Register User",
+          "description": "Register a new user.",
+          "parameters": [
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" },
+                  "name": { "type": "string" }
+                },
+                "required": ["email", "password", "name"]
+              }
+            }
+          ],
+          "responses": {
+            "201": { "description": "User registered successfully." },
+            "400": { "description": "Validation error." }
+          }
+        }
+      },
+      "/auth/login": {
+        "post": {
+          "summary": "Login User",
+          "description": "Authenticate a user and return a token.",
+          "parameters": [
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          ],
+          "responses": {
+            "200": { "description": "Login successful, token returned." },
+            "401": { "description": "Invalid credentials." }
+          }
+        }
+      },
+      "/auth/profile": {
+        "get": {
+          "summary": "Get User Profile",
+          "description": "Retrieve the logged-in user's profile information.",
+          "responses": {
+            "200": { "description": "Profile retrieved successfully." },
+            "401": { "description": "Unauthorized access." }
+          }
+        }
+      },
+      "/articles": {
+        "get": {
+          "summary": "Get All Articles",
+          "description": "Retrieve a list of all knowledge base articles.",
+          "responses": {
+            "200": { "description": "List of articles retrieved successfully." }
+          }
+        },
+        "post": {
+          "summary": "Create Article",
+          "description": "Create a new knowledge base article.",
+          "parameters": [
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" }
+                },
+                "required": ["title", "content"]
+              }
+            }
+          ],
+          "responses": {
+            "201": { "description": "Article created successfully." },
+            "400": { "description": "Validation error." }
+          }
+        }
+      },
+      "/articles/{id}": {
+        "get": {
+          "summary": "Get Article by ID",
+          "description": "Retrieve a specific article by its ID.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" }
+          ],
+          "responses": {
+            "200": { "description": "Article retrieved successfully." },
+            "404": { "description": "Article not found." }
+          }
+        },
+        "put": {
+          "summary": "Update Article",
+          "description": "Update an existing article by its ID.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" },
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" }
+                },
+                "required": ["title", "content"]
+              }
+            }
+          ],
+          "responses": {
+            "200": { "description": "Article updated successfully." },
+            "404": { "description": "Article not found." }
+          }
+        },
+        "delete": {
+          "summary": "Delete Article",
+          "description": "Delete an article by its ID.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" }
+          ],
+          "responses": {
+            "200": { "description": "Article deleted successfully." },
+            "404": { "description": "Article not found." }
+          }
+        }
+      },
+      "/tickets": {
+        "get": {
+          "summary": "Get All Tickets",
+          "description": "Retrieve a list of all tickets (admin view).",
+          "responses": {
+            "200": { "description": "List of tickets retrieved successfully." }
+          }
+        },
+        "post": {
+          "summary": "Create Ticket",
+          "description": "Create a new ticket.",
+          "parameters": [
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "priority": { "type": "string" }
+                },
+                "required": ["title", "description", "priority"]
+              }
+            }
+          ],
+          "responses": {
+            "201": { "description": "Ticket created successfully." },
+            "400": { "description": "Validation error." }
+          }
+        }
+      },
+      "/tickets/{id}": {
+        "get": {
+          "summary": "Get Ticket by ID",
+          "description": "Retrieve a specific ticket by its ID.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" }
+          ],
+          "responses": {
+            "200": { "description": "Ticket retrieved successfully." },
+            "404": { "description": "Ticket not found." }
+          }
+        },
+        "put": {
+          "summary": "Update Ticket",
+          "description": "Update an existing ticket.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" },
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string" },
+                  "priority": { "type": "string" }
+                },
+                "required": ["status", "priority"]
+              }
+            }
+          ],
+          "responses": {
+            "200": { "description": "Ticket updated successfully." },
+            "404": { "description": "Ticket not found." }
+          }
+        },
+        "delete": {
+          "summary": "Delete Ticket",
+          "description": "Delete a ticket by its ID.",
+          "parameters": [
+            { "in": "path", "name": "id", "required": true, "type": "string" }
+          ],
+          "responses": {
+            "200": { "description": "Ticket deleted successfully." },
+            "404": { "description": "Ticket not found." }
+          }
+        }
+      }
+    }
+  }
