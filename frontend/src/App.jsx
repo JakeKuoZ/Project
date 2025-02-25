@@ -20,6 +20,7 @@ import PendingAssignments from './pages/PendingAssignments';
 // import SOPAnalysis from './pages/SOPAnalysis';
 // import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
+import ChatWidget from './components/ChatWidget';
 
 
 const App = () => {
@@ -31,6 +32,7 @@ const App = () => {
     <Router>
       <div className="app-container">
         <NavBar />
+        <ChatWidget/>
         <Box sx={{ p: 3, maxWidth: 1200, margin: '0 auto' }}>
           <Routes>
             <Route path="/" element={<Home />} />

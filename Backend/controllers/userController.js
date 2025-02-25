@@ -20,4 +20,17 @@ const getAdminUsers = async (req, res) => {
   }
 };
 
-module.exports = { getAdminUsers };
+const searchUsers = async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    const regex = new RegExp(query, 'i'); // case-insensitive
+    const users = await User.find({
+      name: { $regex: regex },
+    }).select('_id name email');
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = { getAdminUsers ,searchUsers };
