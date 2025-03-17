@@ -282,7 +282,7 @@ const Profile = () => {
           <Divider />
 
           {/* Notifications Section */}
-          <Paper sx={{ p: 2, mt: 3 }}>
+          {/* <Paper sx={{ p: 2, mt: 3 }}>
             <Typography variant="h6" gutterBottom>
               <Notifications sx={{ verticalAlign: 'middle', mr: 1 }} />
               Recent Notifications ({dashboardData.notifications?.length || 0})
@@ -292,7 +292,7 @@ const Profile = () => {
                 • {notification.message}
               </Typography>
             ))}
-          </Paper>
+          </Paper> */}
 
           {/* Role-specific sections */}
           {dashboardData.userProfile.role === 'admin' ? (

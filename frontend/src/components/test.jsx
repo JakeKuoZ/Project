@@ -695,29 +695,27 @@ const ChatWidget = () => {
 
   const handleSendMessage = async () => {
     if (!selectedChat || !socket || !messageText.trim()) return;
-
+  
     try {
       const tempId = Date.now().toString();
+      
+      // Create message data without file initially
       const messageData = {
         _id: tempId,
         chatId: selectedChat._id,
         text: messageText,
         sender: userId,
         createdAt: new Date(),
-        file: fileInputRef.current?.files[0] 
-          ? await toBase64(fileInputRef.current.files[0]) 
-          : null
       };
-
+  
       console.log('Sending message:', messageData);
-
+  
       // Add optimistic update with temporary ID
       setMessages(prev => [...prev, messageData]);
-
-      // Clear inputs immediately for better UX
+  
+      // Clear message text immediately for better UX
       setMessageText('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-
+  
       // Stop typing indicator
       if (isTyping) {
         setIsTyping(false);
@@ -727,24 +725,63 @@ const ChatWidget = () => {
           userName
         });
       }
-
-      // Emit via Socket.IO
-      socket.emit('sendMessage', messageData);
-      
-      // Listen for error and remove optimistic update if needed
-      const errorHandler = ({ error }) => {
-        console.error('Failed to send message:', error);
-        setMessages(prev => prev.filter(msg => msg._id !== tempId));
-        socket.off('messageError', errorHandler);
+  
+      // Handle file upload differently based on if there's a file
+      if (fileInputRef.current?.files[0]) {
+        // For file uploads, use FormData and axios to send via REST API
+        const formData = new FormData();
+        formData.append('chatId', selectedChat._id);
+        formData.append('text', messageData.text);
+        formData.append('file', fileInputRef.current.files[0]);
         
-        // Show error notification
-        addNotification(`Failed to send message: ${error}`);
-      };
-      
-      socket.on('messageError', errorHandler);
-      
-      // Remove error handler after 5 seconds
-      setTimeout(() => socket.off('messageError', errorHandler), 5000);
+        // Clear file input immediately for better UX
+        fileInputRef.current.value = '';
+        
+        // Send using REST API for file uploads
+        try {
+          const response = await axios.post(
+            `${API_BASE_URL}api/chats/`,
+            formData,
+            {
+              headers: {
+                'Content-Type': 'multipart/form-data',
+                Authorization: `Bearer ${token}`
+              }
+            }
+          );
+          
+          // Remove optimistic message and add the real one
+          setMessages(prev => prev.filter(msg => msg._id !== tempId));
+          
+          // Populate the response (backend should return populated message)
+          if (response.data) {
+            setMessages(prev => [...prev, response.data]);
+          }
+        } catch (error) {
+          console.error('Error sending file message:', error);
+          // Remove optimistic message if it failed
+          setMessages(prev => prev.filter(msg => msg._id !== tempId));
+          addNotification('Failed to upload file');
+        }
+      } else {
+        // For text-only messages, continue using Socket.IO
+        socket.emit('sendMessage', messageData);
+        
+        // Listen for error and remove optimistic update if needed
+        const errorHandler = ({ error }) => {
+          console.error('Failed to send message:', error);
+          setMessages(prev => prev.filter(msg => msg._id !== tempId));
+          socket.off('messageError', errorHandler);
+          
+          // Show error notification
+          addNotification(`Failed to send message: ${error}`);
+        };
+        
+        socket.on('messageError', errorHandler);
+        
+        // Remove error handler after 5 seconds
+        setTimeout(() => socket.off('messageError', errorHandler), 5000);
+      }
       
     } catch (err) {
       console.error('Error sending message:', err);
@@ -839,70 +876,25 @@ const ChatWidget = () => {
         </Box>
       );
     }
-  
-    // STEP 1: Build a complete user lookup map from all available data
-    const userLookup = {};
-    
-    // Add current user to lookup
-    if (userId && userName) {
-      userLookup[userId] = { name: userName };
-    }
-    
-    // Scan all chats for user info
-    chatList.forEach(chat => {
-      // Check lastMessage.sender if available
-      if (chat.lastMessage && chat.lastMessage.sender) {
-        const sender = chat.lastMessage.sender;
-        if (sender._id && (sender.name || sender.email)) {
-          userLookup[sender._id] = {
-            name: sender.name || sender.email.split('@')[0],
-            email: sender.email
-          };
-        }
-      }
-      
-      // Check messages array if available
-      if (chat.messages && Array.isArray(chat.messages)) {
-        chat.messages.forEach(msg => {
-          if (msg.sender && typeof msg.sender === 'object' && msg.sender._id) {
-            if (msg.sender.name || msg.sender.email) {
-              userLookup[msg.sender._id] = {
-                name: msg.sender.name || msg.sender.email.split('@')[0],
-                email: msg.sender.email
-              };
-            }
-          }
-        });
-      }
-    });
-    
-    console.log('Built user lookup table:', userLookup);
-  
+
     return (
       <List sx={{ width: '100%' }}>
         {chatList.map((chat) => {
-          // STEP 2: Find the other participant ID (not the current user)
-          let otherParticipantId = null;
-          
-          if (chat.participants && chat.participants.length > 0) {
-            const otherParticipant = chat.participants.find(p => 
-              p._id && p._id.toString() !== userId.toString()
-            );
-            
-            if (otherParticipant && otherParticipant._id) {
-              otherParticipantId = otherParticipant._id.toString();
+          // Find the other participant (not current user)
+          // Fixed logic to correctly identify the other participant
+          const otherParticipant = chat.participants?.find(
+            (p) => {
+              // Handle both object and string IDs
+              const participantId = p?._id || p;
+              return participantId.toString() !== userId.toString();
             }
-          }
+          );
           
-          // STEP 3: Use the lookup table to get the name
-          let otherParticipantName = 'Unknown User';
-          
-          if (otherParticipantId && userLookup[otherParticipantId]) {
-            otherParticipantName = userLookup[otherParticipantId].name;
-          } else if (otherParticipantId) {
-            // If we only have the ID, show it in a user-friendly format
-            otherParticipantName = `User ${otherParticipantId.substring(0, 6)}...`;
-          }
+          // Keep a reference to participants even if they're just IDs
+          const otherParticipantName = 
+            otherParticipant?.name || 
+            (chat.participantNames ? chat.participantNames.find(name => name !== userName) : null) || 
+            'Unknown User';
           
           const isSelected = selectedChat && selectedChat._id === chat._id;
           

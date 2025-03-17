@@ -12,8 +12,16 @@ const notificationSchema = mongoose.Schema(
       type: String,
       required: true,
     },
+    type: {
+      type: String,
+      enum: ['chat_message', 'ticket_update', 'system', 'friend_request', 'other'],
+      default: 'other'
+    },
     link: {
       type: String, // Optional link to the relevant resource (e.g., ticket, chat)
+    },
+    data: {
+      type: mongoose.Schema.Types.Mixed, // Any additional data relevant to the notification
     },
     isRead: {
       type: Boolean,

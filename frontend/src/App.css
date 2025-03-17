@@ -1,30 +1,120 @@
-/* App.css */
-#root {
+/* App.css - Main application styles */
 
+/* Root container - full width without padding constraints */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0; 
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Container for content that should be centered and width-constrained */
+.content-container {
   max-width: 1280px;
   margin: 0 auto;
-   padding: 2rem;
-  /* text-align: center; <-- remove this to avoid forced center text */
+  padding: 1rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* Full width container for components that need to span the entire viewport */
+.full-width-container {
+  width: 100%;
+  padding: 0;
+  margin: 0;
 }
 
-@keyframes logo-spin {
+/* Chat widget specific overrides */
+.chat-widget-drawer {
+  max-width: none !important;
+}
+
+.chat-widget-drawer .MuiDrawer-paper {
+  max-width: none !important;
+}
+
+/* General utility classes */
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+/* Page-specific container classes */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 64px); /* Adjust for header height */
+  padding: 2rem;
+}
+
+.dashboard-container {
+  padding: 1.5rem;
+}
+
+/* Form styling */
+.form-container {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+/* Tables and data grids */
+.data-grid-container {
+  height: 600px;
+  width: 100%;
+  overflow: auto;
+}
+
+/* Add smooth transitions */
+.page-transition {
+  transition: opacity 0.3s ease;
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
   }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+  }
+}
+
+/* Media queries for responsive design */
+@media (max-width: 768px) {
+  .content-container {
+    padding: 0.75rem;
+  }
+  
+  .dashboard-container {
+    padding: 0.75rem;
+  }
+  
+  .auth-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-container {
+    padding: 0.5rem;
+  }
+  
+  .form-container {
+    padding: 1rem;
   }
 }

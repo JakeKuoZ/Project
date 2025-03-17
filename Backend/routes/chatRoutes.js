@@ -7,6 +7,7 @@ const {
   deleteChat,
   sendMessage,
   getMessages,
+  getUserChats
 } = require('../controllers/chatController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -32,5 +33,8 @@ router.post('/', protect, upload.single('file'), sendMessage);
 
 // Route to get chat messages (protected)
 router.get('/:chatId', protect, getMessages);
+
+router.get('/all', protect, getUserChats);
+
 
 module.exports = router;

@@ -11,7 +11,7 @@ const SOP = require('../models/SOP');
 const getDashboardSummary = async (req, res) => {
   console.log('--- getDashboardSummary called ---');
   try {
-    // 1) Fetch the user’s basic info
+    // 1) Fetch the user's basic info
     const user = await User.findById(req.user.id).select('name email role createdAt');
     const role = user.role;
     console.log("user role need appear:",role);
@@ -53,7 +53,11 @@ const getDashboardSummary = async (req, res) => {
         ...data,
         totalTickets: await Ticket.countDocuments(),
         pendingAssignments: await Ticket.countDocuments({ assignedTo: null }),
-        notifications: await Notification.find({ user: req.user.id, isRead: false }),
+        notifications: await Notification.find({ 
+          user: req.user.id, 
+          isRead: false,
+          type: { $ne: 'chat_message' }  // Exclude chat notifications from dashboard
+        }),
         myTickets: adminTickets,       // Tickets the admin created
         myArticles: adminArticles,     // Articles created by admin
         myAssignedTickets: myAssigned, // Tickets assigned to me
@@ -66,7 +70,11 @@ const getDashboardSummary = async (req, res) => {
       data = {
         ...data,
         myTickets: userTickets,
-        notifications: await Notification.find({ user: req.user.id, isRead: false }),
+        notifications: await Notification.find({ 
+          user: req.user.id, 
+          isRead: false,
+          type: { $ne: 'chat_message' }  // Exclude chat notifications from dashboard
+        }),
         submittedSOPs: await SOP.find({ user: req.user.id })
       };
     }

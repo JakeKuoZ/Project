@@ -19,4 +19,7 @@ const chatSchema = new Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Chat', chatSchema);
+// Check if model already exists before compiling
+const Chat = mongoose.models.Chat || mongoose.model('Chat', chatSchema);
+
+module.exports = Chat;

@@ -40,20 +40,29 @@ const server = createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
-  },
+    methods: ['GET', 'POST']
+  }
 });
+
+// Attach io to requests
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
+// Initialize socket after middleware
+initializeSocket(io);
 
 // // Disable ETag, so the server never responds 304
 // app.disable('etag');
 
-// // Or force no-cache
-// app.use((req, res, next) => {
-//   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-//   res.setHeader('Pragma', 'no-cache');
-//   res.setHeader('Expires', '0');
-//   next();
-// });
+// Or force no-cache
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -66,8 +75,6 @@ const connectDB = async () => {
   }
 };
 connectDB();
-
-initializeSocket(io);
 
 
 // Routes Placeholder

@@ -28,7 +28,7 @@ const Home = () => {
       try {
         if (!token) {
           // If there's truly no guest scenario, you might just do a redirect or an error.
-          throw new Error('No token found. Please log in again.');
+          throw new Error('No token found. Please log in and try again.');
         }
         // Fetch the dashboard summary:
         const res = await axios.get(`${API_BASE_URL}api/dashboard`, {
