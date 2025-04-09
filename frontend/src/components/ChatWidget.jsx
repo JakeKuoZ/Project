@@ -65,6 +65,7 @@ const ChatWidget = () => {
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [fileAttachment, setFileAttachment] = useState(null);
 
   // REFS
   const fileInputRef = useRef(null);
@@ -77,10 +78,6 @@ const ChatWidget = () => {
   const handleIncomingMessageRef = useRef(null);
   const handleNewChatRef = useRef(null);
 
-  // Retrieve user info from localStorage
-  const token = localStorage.getItem('token');
-  const userId = localStorage.getItem('userId');
-  const userName = localStorage.getItem('userName');
 
   // Define handler functions as useCallback to maintain referential stability
   const handleIncomingMessage = useCallback((data) => {
@@ -779,30 +776,36 @@ const ChatWidget = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!selectedChat || !socket || !messageText.trim()) return;
-
+    if (!selectedChat || !socket || (!messageText.trim() && !fileAttachment)) return;
+  
     try {
       const tempId = Date.now().toString();
+      let fileData = null;
+      
+      // If there's a file, convert it to base64 with the filename
+      if (fileAttachment) {
+        fileData = await toBase64(fileAttachment);
+      }
+      
       const messageData = {
         _id: tempId,
         chatId: selectedChat._id,
         text: messageText,
         sender: userId,
         createdAt: new Date(),
-        file: fileInputRef.current?.files[0] 
-          ? await toBase64(fileInputRef.current.files[0]) 
-          : null
+        file: fileData
       };
-
+  
       console.log('Sending message:', messageData);
-
+  
       // Add optimistic update with temporary ID
       setMessages(prev => [...prev, messageData]);
-
+  
       // Clear inputs immediately for better UX
       setMessageText('');
+      setFileAttachment(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-
+  
       // Stop typing indicator
       if (isTyping) {
         setIsTyping(false);
@@ -812,7 +815,7 @@ const ChatWidget = () => {
           userName
         });
       }
-
+  
       // Emit via Socket.IO
       socket.emit('sendMessage', messageData);
       
@@ -841,7 +844,12 @@ const ChatWidget = () => {
   const toBase64 = file => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => {
+      // Append the file name to the data URL
+      const dataUrl = reader.result;
+      const dataUrlWithFileName = `${dataUrl};name=${encodeURIComponent(file.name)}`;
+      resolve(dataUrlWithFileName);
+    };
     reader.onerror = error => reject(error);
   });
 
@@ -1340,56 +1348,135 @@ const renderChatList = () => {
                   
                   {/* Messages area */}
                   <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
-                    {messages.map((msg) => {
-                      const senderId = msg.sender?._id || msg.sender;
-                      const isMine = senderId === userId;
-                      return (
-                        <Box
-                          key={msg._id || Math.random()}
-                          sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: isMine ? 'flex-end' : 'flex-start',
-                            mb: 1,
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              maxWidth: '70%',
-                              p: 1,
-                              borderRadius: 1,
-                              backgroundColor: isMine ? '#e3f2fd' : 'white',
-                              boxShadow: 1,
-                            }}
-                          >
-                            <Typography variant="body2">{msg.text}</Typography>
-                            {msg.file && (
-                              <Box sx={{ mt: 1 }}>
-                                <a
-                                  href={msg.file}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  Attachment
-                                </a>
-                              </Box>
-                            )}
-                            <Typography
-                              variant="caption"
-                              color="textSecondary"
-                              sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}
-                            >
-                              {new Date(msg.createdAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                    <div ref={messagesEndRef} />
+  {messages.map((msg) => {
+    const senderId = msg.sender?._id || msg.sender;
+    const isMine = senderId === userId;
+    
+    // Check if the file is an image by examining the data URL
+    const isImageFile = msg.file && msg.file.startsWith('data:image/');
+    
+    // Extract file name if present in the data URL
+    let fileName = "File";
+    if (msg.file && msg.file.includes(';name=')) {
+      const nameMatch = msg.file.match(/;name=([^;]+)/);
+      fileName = nameMatch ? nameMatch[1] : "File";
+    }
+    
+    return (
+      <Box
+        key={msg._id || Math.random()}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: isMine ? 'flex-end' : 'flex-start',
+          mb: 1,
+        }}
+      >
+        <Box
+          sx={{
+            maxWidth: '70%',
+            p: 1,
+            borderRadius: 1,
+            backgroundColor: isMine ? '#e3f2fd' : 'white',
+            boxShadow: 1,
+          }}
+        >
+          <Typography variant="body2">{msg.text}</Typography>
+          
+          {/* File attachment rendering */}
+          {msg.file && (
+            <Box 
+              sx={{ 
+                mt: 1, 
+                border: '1px solid #e0e0e0', 
+                borderRadius: 1,
+                overflow: 'hidden',
+                backgroundColor: '#f5f5f5'
+              }}
+            >
+              {isImageFile ? (
+                // If it's an image, show a preview
+                <Box sx={{ position: 'relative' }}>
+                  <img 
+                    src={msg.file} 
+                    alt="Attachment" 
+                    style={{ 
+                      maxWidth: '100%', 
+                      maxHeight: '200px',
+                      display: 'block'
+                    }} 
+                  />
+                  <Box 
+                    sx={{ 
+                      position: 'absolute', 
+                      bottom: 0, 
+                      left: 0, 
+                      right: 0,
+                      backgroundColor: 'rgba(0,0,0,0.5)',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    <Typography 
+                      variant="caption" 
+                      sx={{ color: 'white', display: 'flex', alignItems: 'center' }}
+                    >
+                      <AttachFileIcon fontSize="small" sx={{ mr: 0.5 }} />
+                      {fileName}
+                    </Typography>
                   </Box>
+                </Box>
+              ) : (
+                // If it's not an image, show a download link with icon
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '8px',
+                    '&:hover': {
+                      backgroundColor: '#eeeeee'
+                    }
+                  }}
+                >
+                  <AttachFileIcon fontSize="small" sx={{ mr: 1 }} />
+                  <a
+                    href={msg.file}
+                    download={fileName}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ 
+                      textDecoration: 'none', 
+                      color: '#1976d2',
+                      fontSize: '0.875rem',
+                      display: 'block',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '200px'
+                    }}
+                  >
+                    {fileName}
+                  </a>
+                </Box>
+              )}
+            </Box>
+          )}
+          
+          <Typography
+            variant="caption"
+            color="textSecondary"
+            sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}
+          >
+            {new Date(msg.createdAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  })}
+  <div ref={messagesEndRef} />
+</Box>
 
                   {/* Typing indicators */}
                   {typingUsers.size > 0 && (
@@ -1400,53 +1487,96 @@ const renderChatList = () => {
 
                   {/* Message input */}
                   <Box
-                    sx={{
-                      p: 1,
-                      borderTop: '1px solid #e0e0e0',
-                      backgroundColor: 'white',
-                      display: 'flex',
-                    }}
-                  >
-                    <TextField
-                      multiline
-                      maxRows={3}
-                      size="small"
-                      fullWidth
-                      variant="outlined"
-                      placeholder="Type your message..."
-                      value={messageText}
-                      onChange={(e) => {
-                        setMessageText(e.target.value);
-                        handleTyping();
-                      }}
-                      onKeyDown={(e) => {
-                        // Send on Enter without Shift
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }}
-                    />
-                    <IconButton
-                      color="primary"
-                      onClick={handleSendMessage}
-                      disabled={!messageText.trim()}
-                      sx={{ ml: 1 }}
-                    >
-                      <SendIcon />
-                    </IconButton>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      style={{ display: 'none' }}
-                    />
-                    <IconButton
-                      onClick={() => fileInputRef.current?.click()}
-                      sx={{ ml: 1 }}
-                    >
-                      <AttachFileIcon />
-                    </IconButton>
-                  </Box>
+  sx={{
+    p: 1,
+    borderTop: '1px solid #e0e0e0',
+    backgroundColor: 'white',
+    display: 'flex',
+    flexDirection: 'column',
+  }}
+>
+  {/* File preview if selected but not yet sent */}
+  {fileAttachment && (
+    <Box 
+      sx={{ 
+        mb: 1, 
+        p: 1, 
+        backgroundColor: '#f5f5f5',
+        borderRadius: 1,
+        display: 'flex',
+        alignItems: 'center',
+        border: '1px solid #e0e0e0',
+      }}
+    >
+      <AttachFileIcon fontSize="small" sx={{ mr: 1 }} />
+      <Typography variant="caption" sx={{ flex: 1 }}>
+        {fileAttachment.name}
+      </Typography>
+      <IconButton 
+        size="small" 
+        onClick={(e) => {
+          e.stopPropagation();
+          // Clear both the DOM input and our state
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          setFileAttachment(null);
+        }}
+      >
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  )}
+  
+  {/* Message input with file and send buttons */}
+  <Box sx={{ display: 'flex' }}>
+    <TextField
+      multiline
+      maxRows={3}
+      size="small"
+      fullWidth
+      variant="outlined"
+      placeholder="Type your message..."
+      value={messageText}
+      onChange={(e) => {
+        setMessageText(e.target.value);
+        handleTyping();
+      }}
+      onKeyDown={(e) => {
+        // Send on Enter without Shift
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSendMessage();
+        }
+      }}
+    />
+    <IconButton
+      color="primary"
+      onClick={handleSendMessage}
+      disabled={!messageText.trim() && !fileAttachment}
+      sx={{ ml: 1 }}
+    >
+      <SendIcon />
+    </IconButton>
+    <input
+      type="file"
+      ref={fileInputRef}
+      style={{ display: 'none' }}
+      onChange={(e) => {
+        // When a file is selected, update our state
+        if (e.target.files && e.target.files[0]) {
+          setFileAttachment(e.target.files[0]);
+        } else {
+          setFileAttachment(null);
+        }
+      }}
+    />
+    <IconButton
+      onClick={() => fileInputRef.current?.click()}
+      sx={{ ml: 1 }}
+    >
+      <AttachFileIcon />
+    </IconButton>
+  </Box>
+</Box>
                 </>
               ) : (
                 <Box
