@@ -33,4 +33,29 @@ const searchUsers = async (req, res) => {
   }
 };
 
-module.exports = { getAdminUsers ,searchUsers };
+const getUsersByIds = async (req, res) => {
+  try {
+    const { ids } = req.query;
+    
+    if (!ids) {
+      return res.status(400).json({ error: 'No user IDs provided' });
+    }
+    
+    // Split the comma-separated list of IDs
+    const userIds = ids.split(',').map(id => id.trim());
+    
+    // Fetch users by IDs
+    const users = await User.find(
+      { _id: { $in: userIds } },
+      'name email' // Only return essential fields
+    );
+    
+    // Return found users
+    res.status(200).json(users);
+  } catch (error) {
+    console.error('Error fetching users by IDs:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = { getAdminUsers ,searchUsers, getUsersByIds};

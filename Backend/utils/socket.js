@@ -18,20 +18,8 @@ const initializeSocket = (io) => {  // Accept io instead of server
     socket.on('sendMessage', async (message) => {
       try {
         console.log('RECEIVED MESSAGE:', message);
-        console.log('MESSAGE SENDER:', message.sender);
-        console.log('MESSAGE CHAT:', message.chatId);
         
-        const chat = await Chat.findById(message.chatId)
-          .populate('participants', '_id')
-          .lean();
-        
-        if (!chat) {
-          console.error('Chat not found:', message.chatId);
-          socket.emit('messageError', { error: 'Chat not found' });
-          return;
-        }
-
-        // Save message to database
+        // First save the message
         const Message = require('../models/Messages');
         const savedMessage = await Message.create({
           chatId: message.chatId,
@@ -41,34 +29,48 @@ const initializeSocket = (io) => {  // Accept io instead of server
         });
         
         console.log('Message saved successfully:', savedMessage._id);
-
-        // Populate sender info
+        
+        // Update chat timestamp
+        await Chat.findByIdAndUpdate(message.chatId, { updatedAt: new Date() });
+        
+        // Now fetch the FULLY POPULATED chat to send back to clients
+        const fullChat = await Chat.findById(message.chatId)
+          .populate('participants', 'name email')
+          .lean();
+        
+        if (!fullChat) {
+          console.error('Chat not found after saving message');
+          socket.emit('messageError', { error: 'Chat data could not be retrieved' });
+          return;
+        }
+        
+        // Get fully populated message
         const populatedMessage = await Message.findById(savedMessage._id)
           .populate('sender', 'name email')
           .lean();
-
-        const receiver = chat.participants.find(p => p._id.toString() !== message.sender);
-        console.log('Identified receiver:', receiver?._id.toString());
-
-        // Update chat timestamp
-        await Chat.findByIdAndUpdate(message.chatId, { updatedAt: new Date() });
-
-        // Broadcast saved message to chat room
-        io.to(message.chatId).emit('receiveMessage', populatedMessage);
-        console.log('Emitted receiveMessage to room:', message.chatId);
-
-        // Notify receiver
-        if (receiver) {
-          io.to(receiver._id.toString()).emit('newMessageNotification', {
-            chatId: message.chatId,
-            chat: chat,
-            message: populatedMessage
-          });
-          console.log('Emitted notification to:', receiver._id.toString());
+        
+        // Create a complete response with both message and chat data
+        const responseData = {
+          ...populatedMessage,
+          chat: fullChat
+        };
+        
+        // Emit to the chat room with COMPLETE data
+        io.to(message.chatId).emit('receiveMessage', responseData);
+        
+        // Also notify other participants individually to ensure they get the full data
+        for (const participant of fullChat.participants) {
+          // Skip the sender
+          if (participant._id.toString() !== message.sender) {
+            io.to(participant._id.toString()).emit('newMessageNotification', {
+              chatId: message.chatId,
+              chat: fullChat,
+              message: populatedMessage
+            });
+          }
         }
       } catch (error) {
         console.error('Message handling error:', error);
-        console.error('ERROR DETAILS:', error.stack);
         socket.emit('messageError', { error: error.message });
       }
     });

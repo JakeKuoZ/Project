@@ -45,6 +45,12 @@ const SOCKET_URL = 'http://192.168.86.34:5000';
 let socket = null;
 
 const ChatWidget = () => {
+  const token = localStorage.getItem('token');
+  const userId = localStorage.getItem('userId');
+  const userName = localStorage.getItem('userName');
+  if (!token || !userId) {
+    return null;
+  }
   // STATE
   const [open, setOpen] = useState(false);
   const [chatList, setChatList] = useState([]);
@@ -82,19 +88,61 @@ const ChatWidget = () => {
     console.log('Current selectedChat:', selectedChat?._id);
     console.log('Incoming message chatId:', data.chatId);
     
-    // If this is for the currently selected chat, add the message to the messages array
+    // If we've received full chat data with the message, update our chat data
+    if (data.chat && data.chat.participants) {
+      console.log('Received fully populated chat data with message');
+      
+      // Update the chat list with this fully populated chat data
+      setChatList(prev => {
+        const chatIndex = prev.findIndex(chat => chat._id === data.chatId);
+        
+        if (chatIndex >= 0) {
+          // Create a new chats array
+          const updatedChats = [...prev];
+          
+          // Replace the chat with the fully populated version, preserving any fields
+          // that might be in our current version but not in the incoming data
+          updatedChats[chatIndex] = {
+            ...updatedChats[chatIndex], // Keep any existing fields
+            ...data.chat, // Update with new chat data
+            updatedAt: data.createdAt || new Date(),
+            lastMessage: data
+          };
+          
+          // Re-sort by most recent
+          return updatedChats.sort(
+            (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+          );
+        }
+        
+        // If chat not found in our list, we might need to add it
+        // But we should have the full data for it at this point
+        console.log('Chat not found in list, might need to add it');
+        return prev;
+      });
+    }
+    
+    // Handle the message itself
     if (selectedChat && data.chatId === selectedChat._id) {
       console.log('Message is for selected chat - adding to messages');
       
+      // If we have an updated chat with full participant data, update selectedChat too
+      if (data.chat && data.chat.participants) {
+        setSelectedChat(prev => ({
+          ...prev,
+          ...data.chat,
+          updatedAt: data.createdAt || new Date(),
+          lastMessage: data
+        }));
+      }
+      
       setMessages(prev => {
-        // Check if we already have this exact message by ID
+        // Rest of your existing message handling logic...
+        // Check if we already have this message...
         if (prev.some(msg => msg._id === data._id)) {
-          console.log('Exact message ID already exists, not adding duplicate');
           return prev;
         }
         
-        // Then check if we have a temp version of this message
-        // (matching on content and approximate time)
         const tempIndex = prev.findIndex(msg => 
           msg.text === data.text && 
           String(msg.sender).includes(String(data.sender?._id || data.sender)) &&
@@ -102,57 +150,39 @@ const ChatWidget = () => {
         );
         
         if (tempIndex >= 0) {
-          console.log('Found temporary version of this message, replacing');
           const updatedMessages = [...prev];
           updatedMessages[tempIndex] = data;
           return updatedMessages;
         }
         
-        // Otherwise add as new message
-        console.log('Adding new message to UI');
         return [...prev, data];
       });
       
-      // Scroll to bottom after state update
       setTimeout(scrollToBottom, 50);
     } else {
-      console.log('Message is NOT for selected chat');
-      // Some other chat - increment unread count
+      // Message is for another chat
       setUnreadCount(prev => prev + 1);
       
-      // Play notification sound
       if (soundRef.current) {
         soundRef.current.currentTime = 0;
         soundRef.current.play().catch(e => console.log('Failed to play sound:', e));
       }
-    }
-
-    // Always update the chat list to keep it current regardless of which chat received the message
-    setChatList(prev => {
-      const chatIndex = prev.findIndex(chat => chat._id === data.chatId);
       
-      if (chatIndex >= 0) {
-        // Update existing chat with latest message info
-        const updatedChats = [...prev];
-        updatedChats[chatIndex] = {
-          ...updatedChats[chatIndex],
-          updatedAt: data.createdAt || new Date(),
-          lastMessage: data
-        };
-        
-        // Re-sort by most recent
-        return updatedChats.sort(
-          (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
-        );
-      } else {
-        // This should rarely happen - a new message for a chat not in our list
-        // In this case, we should refetch all chats
-        console.log('Chat not found in list, refreshing chats');
-        fetchUserChats();
-        return prev;
+      // If we don't have the chat with this message in our list 
+      // but received full chat data, add it
+      if (data.chat && data.chat.participants) {
+        setChatList(prev => {
+          if (!prev.some(chat => chat._id === data.chatId)) {
+            return [data.chat, ...prev].sort(
+              (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+            );
+          }
+          return prev;
+        });
       }
-    });
+    }
   }, [selectedChat]);
+  
 
   // When handling a new chat, make sure we don't lose existing data
   const handleNewChat = useCallback((chat) => {
@@ -521,6 +551,8 @@ const ChatWidget = () => {
   // ----------------------------------------------------------------
   // API Calls
   // ----------------------------------------------------------------
+  // Updated fetchUserChats function to handle missing user data on the client side
+
   const fetchUserChats = async () => {
     if (!token) {
       console.log('No token, skipping fetchUserChats');
@@ -543,20 +575,73 @@ const ChatWidget = () => {
       
       console.log('Fetched chats:', res.data.length);
       
-      // Process participant data to ensure correct format
+      // Create a set of all participant IDs who need names
+      const unknownUserIds = new Set();
+      
+      // First pass: process chat data and identify missing participants
       const processedData = res.data.map(chat => {
         // Ensure participants are properly formatted
         if (chat.participants) {
           chat.participants = chat.participants.map(p => {
-            // If participant is just an ID string, convert to object
-            if (typeof p === 'string' || p instanceof String || !p._id) {
-              return { _id: p.toString() };
+            // If participant is just an ID string, convert to object and flag for lookup
+            if (typeof p === 'string') {
+              unknownUserIds.add(p);
+              return { _id: p };
+            } 
+            // If participant has _id but no name/email, flag for lookup
+            else if (p._id && (!p.name || p.name.startsWith('User '))) {
+              unknownUserIds.add(p._id.toString());
+              return p;
             }
             return p;
           });
         }
         return chat;
       });
+      
+      // If we have unknown users, fetch their info
+      if (unknownUserIds.size > 0) {
+        console.log(`Need to fetch data for ${unknownUserIds.size} unknown users:`, Array.from(unknownUserIds));
+        
+        try {
+          // Convert Set to array
+          const userIdsArray = Array.from(unknownUserIds);
+          
+          // Fetch user data 
+          const userRes = await axios.get(
+            `${API_BASE_URL}api/users/batch?ids=${userIdsArray.join(',')}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          console.log('Fetched additional user data:', userRes.data);
+          
+          // Create a lookup map for the users we fetched
+          const userDataMap = {};
+          userRes.data.forEach(user => {
+            userDataMap[user._id] = user;
+          });
+          
+          // Second pass: update the processed data with the user info we fetched
+          processedData.forEach(chat => {
+            if (chat.participants) {
+              chat.participants = chat.participants.map(p => {
+                const id = p._id.toString();
+                if (userDataMap[id]) {
+                  return {
+                    ...p,
+                    name: userDataMap[id].name,
+                    email: userDataMap[id].email
+                  };
+                }
+                return p;
+              });
+            }
+          });
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          // Continue with what we have
+        }
+      }
       
       // Sort by updatedAt descending
       const sorted = (processedData || []).sort(
@@ -822,148 +907,264 @@ const ChatWidget = () => {
     }
   };
 
-  // Improve chat listing and display
-  const renderChatList = () => {
-    if (isLoading && chatList.length === 0) {
-      return (
-        <Box sx={{ p: 2, textAlign: 'center' }}>
-          <Typography color="textSecondary">Loading chats...</Typography>
-        </Box>
+  const fetchUsersByIds = async (userIds) => {
+    if (!userIds || userIds.length === 0 || !token) return {};
+    
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}api/users/batch?ids=${userIds.join(',')}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-    }
-    
-    if (!chatList || chatList.length === 0) {
-      return (
-        <Box sx={{ p: 2, textAlign: 'center' }}>
-          <Typography color="textSecondary">No chats yet</Typography>
-        </Box>
-      );
-    }
-  
-    // STEP 1: Build a complete user lookup map from all available data
-    const userLookup = {};
-    
-    // Add current user to lookup
-    if (userId && userName) {
-      userLookup[userId] = { name: userName };
-    }
-    
-    // Scan all chats for user info
-    chatList.forEach(chat => {
-      // Check lastMessage.sender if available
-      if (chat.lastMessage && chat.lastMessage.sender) {
-        const sender = chat.lastMessage.sender;
-        if (sender._id && (sender.name || sender.email)) {
-          userLookup[sender._id] = {
-            name: sender.name || sender.email.split('@')[0],
-            email: sender.email
-          };
-        }
+      
+      // Create a map of user ID to user data
+      const userMap = {};
+      if (response.data && Array.isArray(response.data)) {
+        response.data.forEach(user => {
+          if (user && user._id) {
+            userMap[user._id] = user;
+          }
+        });
       }
       
-      // Check messages array if available
-      if (chat.messages && Array.isArray(chat.messages)) {
-        chat.messages.forEach(msg => {
-          if (msg.sender && typeof msg.sender === 'object' && msg.sender._id) {
-            if (msg.sender.name || msg.sender.email) {
-              userLookup[msg.sender._id] = {
-                name: msg.sender.name || msg.sender.email.split('@')[0],
-                email: msg.sender.email
-              };
-            }
+      return userMap;
+    } catch (error) {
+      console.error('Error fetching users by IDs:', error);
+      return {};
+    }
+  };
+  // Improve chat listing and display
+  // Replace your existing renderChatList function in ChatWidget.jsx with this:
+
+const renderChatList = () => {
+  useEffect(() => {
+    // This effect will run whenever chatList changes
+    // It will identify and fetch any missing user information
+    
+    const missingUserIds = new Set();
+    
+    // Find participants that are just IDs or missing names
+    chatList.forEach(chat => {
+      if (chat.participants) {
+        chat.participants.forEach(p => {
+          // If it's a string ID or an object with ID but no name
+          if (typeof p === 'string' || (p._id && !p.name)) {
+            const id = typeof p === 'string' ? p : p._id.toString();
+            missingUserIds.add(id);
           }
         });
       }
     });
     
-    console.log('Built user lookup table:', userLookup);
-  
+    // If we have missing users, fetch their data
+    if (missingUserIds.size > 0) {
+      (async () => {
+        const userMap = await fetchUsersByIds(Array.from(missingUserIds));
+        
+        // If we got user data, update the chat list
+        if (Object.keys(userMap).length > 0) {
+          setChatList(prevChats => {
+            // Create a new array to avoid mutating state
+            return prevChats.map(chat => {
+              if (!chat.participants) return chat;
+              
+              // Create a new chat object with updated participants
+              const updatedChat = { ...chat };
+              updatedChat.participants = chat.participants.map(p => {
+                const id = typeof p === 'string' ? p : p._id?.toString();
+                
+                // If this is a user we've fetched data for
+                if (id && userMap[id]) {
+                  return {
+                    _id: id,
+                    name: userMap[id].name,
+                    email: userMap[id].email
+                  };
+                }
+                
+                // Otherwise return unchanged
+                return p;
+              });
+              
+              return updatedChat;
+            });
+          });
+        }
+      })();
+    }
+  }, [chatList]);
+
+  if (isLoading && chatList.length === 0) {
     return (
-      <List sx={{ width: '100%' }}>
-        {chatList.map((chat) => {
-          // STEP 2: Find the other participant ID (not the current user)
-          let otherParticipantId = null;
-          
-          if (chat.participants && chat.participants.length > 0) {
-            const otherParticipant = chat.participants.find(p => 
-              p._id && p._id.toString() !== userId.toString()
-            );
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <Typography color="textSecondary">Loading chats...</Typography>
+      </Box>
+    );
+  }
+  
+  if (!chatList || chatList.length === 0) {
+    return (
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <Typography color="textSecondary">No chats yet</Typography>
+      </Box>
+    );
+  }
+
+  // Build a user lookup map for participants across all chats
+  const userLookup = {};
+  
+  // Add current user to lookup
+  if (userId && userName) {
+    userLookup[userId] = { name: userName };
+  }
+  
+  // First add all participants that have complete info
+  chatList.forEach(chat => {
+    if (chat.participants && Array.isArray(chat.participants)) {
+      chat.participants.forEach(p => {
+        if (p && typeof p === 'object' && p._id && p.name) {
+          userLookup[p._id.toString()] = { 
+            name: p.name,
+            email: p.email
+          };
+        }
+      });
+    }
+  });
+  
+  // Then check message senders as a backup source
+  chatList.forEach(chat => {
+    if (chat.lastMessage && chat.lastMessage.sender) {
+      const sender = chat.lastMessage.sender;
+      if (typeof sender === 'object' && sender._id && sender.name) {
+        userLookup[sender._id.toString()] = {
+          name: sender.name,
+          email: sender.email
+        };
+      }
+    }
+  });
+  
+  console.log('User lookup table built:', userLookup);
+
+  return (
+    <List sx={{ width: '100%' }}>
+      {chatList.map((chat) => {
+        // Find the other participant (not the current user)
+        let otherParticipant = null;
+        
+        if (chat.participants && Array.isArray(chat.participants)) {
+          otherParticipant = chat.participants.find(p => {
+            // Handle case where participant is just an ID string
+            if (typeof p === 'string') {
+              return p !== userId;
+            }
+            // Handle case where participant is an object with _id
+            return p && p._id && p._id.toString() !== userId.toString();
+          });
+        }
+        
+        let otherParticipantName = 'Unknown User';
+        let otherParticipantId = null;
+        
+        if (otherParticipant) {
+          // Case 1: Participant is an object with name property
+          if (typeof otherParticipant === 'object' && otherParticipant.name) {
+            otherParticipantName = otherParticipant.name;
+            otherParticipantId = otherParticipant._id.toString();
+          }
+          // Case 2: Participant is an object with _id but no name
+          else if (typeof otherParticipant === 'object' && otherParticipant._id) {
+            otherParticipantId = otherParticipant._id.toString();
+            console.log(`Looking up participant ID in user lookup: ${otherParticipantId}`);
             
-            if (otherParticipant && otherParticipant._id) {
-              otherParticipantId = otherParticipant._id.toString();
+            // Check if this ID exists in our lookup table
+            if (userLookup[otherParticipantId] && userLookup[otherParticipantId].name) {
+              otherParticipantName = userLookup[otherParticipantId].name;
+            } else {
+              // If still not found, use a friendly fallback
+              otherParticipantName = otherParticipant.email 
+                ? otherParticipant.email.split('@')[0] 
+                : `User ${otherParticipantId.substring(0, 6)}...`;
             }
           }
-          
-          // STEP 3: Use the lookup table to get the name
-          let otherParticipantName = 'Unknown User';
-          
-          if (otherParticipantId && userLookup[otherParticipantId]) {
-            otherParticipantName = userLookup[otherParticipantId].name;
-          } else if (otherParticipantId) {
-            // If we only have the ID, show it in a user-friendly format
-            otherParticipantName = `User ${otherParticipantId.substring(0, 6)}...`;
+          // Case 3: Participant is just a string ID
+          else if (typeof otherParticipant === 'string') {
+            otherParticipantId = otherParticipant;
+            console.log(`Looking up string participant ID: ${otherParticipantId}`);
+            
+            // Check if this ID exists in our lookup table
+            if (userLookup[otherParticipantId] && userLookup[otherParticipantId].name) {
+              otherParticipantName = userLookup[otherParticipantId].name;
+            } else {
+              // If still not found, use a friendly fallback
+              otherParticipantName = `User ${otherParticipantId.substring(0, 6)}...`;
+            }
           }
-          
-          const isSelected = selectedChat && selectedChat._id === chat._id;
-          
-          // Get last message preview if available
-          const lastMessageText = chat.lastMessage?.text || 'No messages yet';
-          const lastMessageTime = chat.lastMessage?.createdAt || chat.updatedAt;
-          
-          return (
-            <ListItem
-              key={chat._id}
-              button
-              onClick={() => setSelectedChat(chat)}
-              sx={{
-                backgroundColor: isSelected ? '#e0f2f1' : 'inherit',
-                borderLeft: isSelected ? '3px solid #009688' : 'none',
-                pl: isSelected ? 1.7 : 2,
-              }}
-            >
-              <ListItemAvatar>
-                <Avatar>
-                  {otherParticipantName.charAt(0).toUpperCase()}
-                </Avatar>
-              </ListItemAvatar>
-              <ListItemText 
-                primary={otherParticipantName}
-                secondary={
-                  <Typography
-                    variant="body2"
-                    color="textSecondary"
-                    noWrap
-                    sx={{ maxWidth: '180px' }}
-                  >
-                    {lastMessageText.length > 30 
-                      ? `${lastMessageText.substring(0, 30)}...` 
-                      : lastMessageText}
-                  </Typography>
-                }
-              />
-              <Typography variant="caption" color="textSecondary">
-                {lastMessageTime 
-                  ? new Date(lastMessageTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
-                  : ''}
-              </Typography>
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCloseChat(chat._id);
-                  }}
-                  size="small"
+        }
+        
+        const isSelected = selectedChat && selectedChat._id === chat._id;
+        
+        // Get last message preview if available
+        const lastMessageText = chat.lastMessage?.text || 'No messages yet';
+        const lastMessageTime = chat.lastMessage?.createdAt || chat.updatedAt;
+        
+        // Use first character of name for avatar, default to '?' if unavailable
+        const avatarText = otherParticipantName ? otherParticipantName.charAt(0).toUpperCase() : '?';
+        
+        return (
+          <ListItem
+            key={chat._id}
+            button
+            onClick={() => setSelectedChat(chat)}
+            sx={{
+              backgroundColor: isSelected ? '#e0f2f1' : 'inherit',
+              borderLeft: isSelected ? '3px solid #009688' : 'none',
+              pl: isSelected ? 1.7 : 2,
+            }}
+          >
+            <ListItemAvatar>
+              <Avatar>
+                {avatarText}
+              </Avatar>
+            </ListItemAvatar>
+            <ListItemText 
+              primary={otherParticipantName}
+              secondary={
+                <Typography
+                  variant="body2"
+                  color="textSecondary"
+                  noWrap
+                  sx={{ maxWidth: '180px' }}
                 >
-                  <CloseIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          );
-        })}
-      </List>
-    );
-  };
+                  {lastMessageText.length > 30 
+                    ? `${lastMessageText.substring(0, 30)}...` 
+                    : lastMessageText}
+                </Typography>
+              }
+            />
+            <Typography variant="caption" color="textSecondary">
+              {lastMessageTime 
+                ? new Date(lastMessageTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+                : ''}
+            </Typography>
+            <ListItemSecondaryAction>
+              <IconButton
+                edge="end"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseChat(chat._id);
+                }}
+                size="small"
+              >
+                <CloseIcon />
+              </IconButton>
+            </ListItemSecondaryAction>
+          </ListItem>
+        );
+      })}
+    </List>
+  );
+};
 
   // Add a visual indicator for socket connection status
   const connectionStatus = () => {

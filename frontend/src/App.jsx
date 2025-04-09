@@ -16,6 +16,7 @@ import TicketList from './pages/TicketList';
 import TicketDetail from './pages/TicketDetail';
 import TicketCreate from './pages/TicketCreate';
 import PendingAssignments from './pages/PendingAssignments';
+import ArticleEdit from './pages/ArticleEdit';
 // import Chat from './pages/Chat';
 // import SOPAnalysis from './pages/SOPAnalysis';
 // import Dashboard from './pages/Dashboard';
@@ -42,6 +43,7 @@ const App = () => {
             <Route path="/articles" element={<ArticleList />} />
             <Route path="/articles/create" element={<CreateArticle />} />
             <Route path="/articles/:id" element={<ArticleDetail />} />
+            <Route path="/articles/edit/:id" element={<ArticleEdit />} />
 
             {/*
               For tickets, we pass isAdmin={user?.role === 'admin'}
